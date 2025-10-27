@@ -1,0 +1,74 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          python3-pip \
+          build-essential \
+          git \
+          zip \
+          unzip \
+          openjdk-11-jdk \
+          autoconf \
+          libtool \
+          pkg-config \
+          zlib1g-dev \
+          libncurses5-dev \
+          libncursesw5-dev \
+          libtinfo5 \
+          cmake \
+          libffi-dev \
+          libssl-dev
+
+    - name: Install Buildozer
+      run: |
+        pip3 install --upgrade pip
+        pip3 install buildozer
+        pip3 install cython
+
+    - name: Build APK with Buildozer
+      run: |
+        buildozer android debug
+        ls -la bin/
+
+    - name: Upload APK artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: LeTousgestions-APK
+        path: bin/*.apk
+        retention-days: 30
+
+    - name: Create Release
+      if: github.ref == 'refs/heads/main'
+      uses: softprops/action-gh-release@v1
+      with:
+        files: bin/*.apk
+        tag_name: v1.0.0-${{ github.run_number }}
+        name: Release v1.0.0-${{ github.run_number }}
+        body: |
+          APK généré automatiquement par GitHub Actions
+          
+          **Changelog:**
+          - Application LeTousgestions complète
+          - Gestion des stocks et ventes
+          - Interface mobile optimisée
