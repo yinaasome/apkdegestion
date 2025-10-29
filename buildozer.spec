@@ -19,18 +19,18 @@ source.include_exts = py,png,jpg,kv,atlas,ttf
 version = 1.0.0
 
 # Requirements
-requirements = python3,kivy,firebase_admin,pyjnius,openssl,requests,urllib3
+requirements = python3,kivy,openssl,requests,urllib3,pyjnius
 
 # Version de Python
 version.regex = __version__ = ['"](.*)['"]
 version.filename = %(source.dir)s/main.py
 
 # Configuration Android
-osx.android.api = 33
-osx.android.minapi = 21
-osx.android.ndk = 25b
-osx.android.sdk = 34
-osx.android.gradle_download = True
+android.api = 33
+android.minapi = 21
+android.ndk = 25b
+android.sdk = 34
+android.gradle_download = True
 
 # Permissions Android
 android.permissions = INTERNET,ACCESS_NETWORK_STATE,WRITE_EXTERNAL_STORAGE,READ_EXTERNAL_STORAGE
@@ -69,31 +69,8 @@ android.add_resources =
 android.allow_backup = true
 android.accept_sdk_license = false
 
-# Services (optionnel pour certaines fonctionnalités)
-# services = Letousgestions:service
-
-# Configuration iOS (si nécessaire)
-# ios.kivy_ios_url = https://github.com/kivy/kivy-ios
-# ios.kivy_ios_branch = master
-# ios.arch = arm64
-
-# Configuration de release
-# (Décommentez pour les builds de release)
-# android.release_artifact = .apk
-# android.aab = 0
-
 # Numéro de version (augmentez à chaque release)
 # android.numeric_version = 1
-
-# Configuration Windows (optionnel)
-# osx.windows.sdk_version = 
-# osx.windows.visualstudio_version = 
-# osx.windows.target_platform = 
-
-# Configuration macOS (optionnel)
-# osx.osx.python_version = 3
-# osx.osx.sdk_version = 
-# osx.osx.deploy_target = 
 
 [buildozer]
 
