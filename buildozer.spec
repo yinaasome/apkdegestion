@@ -82,8 +82,5 @@ warn_on_failure = 1
 # Répertoire de build
 build_dir = ./.buildozer
 
-# Cache pour les dépendances
-bin_dir = ./.bin
-
 # Dossier de sortie des APK
 bin_dir = ./bin
