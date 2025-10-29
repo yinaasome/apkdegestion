@@ -42,8 +42,8 @@ android.features = android.hardware.touchscreen
 android.arch = arm64-v8a,armeabi-v7a
 
 # Configuration de build
-presplash.filename = %(source.dir)s/assets/presplash.png
-icon.filename = %(source.dir)s/assets/icon.png
+#presplash.filename = %(source.dir)s/assets/presplash.png
+#icon.filename = %(source.dir)s/assets/icon.png
 
 # Orientation
 orientation = portrait
