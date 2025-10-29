@@ -10,7 +10,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04  # Utiliser Ubuntu 22.04 au lieu de latest
     
     steps:
     - name: Checkout code
@@ -35,22 +35,26 @@ jobs:
           zlib1g-dev \
           libncurses5-dev \
           libncursesw5-dev \
-          libtinfo5 \
           cmake \
           libffi-dev \
-          libssl-dev
+          libssl-dev \
+          python3-pip \
+          python3-setuptools
           
-    - name: Install Buildozer
+    - name: Install Buildozer and dependencies
       run: |
         pip install --upgrade pip
         pip install buildozer
         pip install cython==0.29.33
+        pip install virtualenv
         
     - name: Build APK with Buildozer
       run: |
         buildozer -v android debug
-        # Pour build release (nécessite une clé de signature) :
-        # buildozer -v android release
+      env:
+        # Variables d'environnement pour éviter certains problèmes
+        CI: false
+        BUILD_WITH_COLORS: false
         
     - name: Upload APK artifact
       uses: actions/upload-artifact@v4
