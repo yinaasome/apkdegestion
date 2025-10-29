@@ -47,6 +47,8 @@ class DemoData:
     
     ventes = []
     entrees = []
+    clients = []
+    ajustements = []
 
 if not DEMO_MODE:
     try:
@@ -60,6 +62,58 @@ if not DEMO_MODE:
         DEMO_MODE = True
 else:
     db = None
+
+class ReceiptGenerator:
+    @staticmethod
+    def generate_receipt(vente_data, client_info=None):
+        """Génère un reçu au format texte pour impression"""
+        date_vente = datetime.fromisoformat(vente_data['date_vente'])
+        
+        receipt = f"""
+{'='*40}
+        LE TOUSGESTIONS
+{'='*40}
+Reçu de Vente N°: {vente_data.get('id', 'N/A')}
+Date: {date_vente.strftime('%d/%m/%Y %H:%M')}
+{'='*40}
+
+Client: {client_info.get('nom', 'Non spécifié') if client_info else 'Non spécifié'}
+Contact: {client_info.get('telephone', 'N/A') if client_info else 'N/A'}
+
+{'='*40}
+DÉTAIL DE LA VENTE:
+{'='*40}
+
+Produit: {vente_data['produit_nom']}
+Quantité: {vente_data['quantite']}
+Prix unitaire: {vente_data['prix_unitaire']:.2f} €
+Sous-total: {vente_data['quantite'] * vente_data['prix_unitaire']:.2f} €
+
+{'='*40}
+TOTAL: {vente_data['quantite'] * vente_data['prix_unitaire']:.2f} €
+{'='*40}
+
+Vendeur: {vente_data.get('gerant_nom', 'N/A')}
+
+Merci de votre confiance !
+À bientôt !
+{'='*40}
+"""
+        return receipt
+    
+    @staticmethod
+    def save_receipt_to_file(receipt_text, filename=None):
+        """Sauvegarde le reçu dans un fichier"""
+        if not filename:
+            filename = f"receipt_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+        
+        try:
+            with open(filename, 'w', encoding='utf-8') as f:
+                f.write(receipt_text)
+            return True
+        except Exception as e:
+            print(f"Erreur sauvegarde reçu: {e}")
+            return False
 
 class LoginScreen(Screen):
     def __init__(self, **kwargs):
@@ -254,9 +308,12 @@ class MainScreen(Screen):
         buttons = [
             ('📦 Gestion des Produits', self.show_produits),
             ('💰 Ventes', self.show_ventes),
+            ('👥 Clients', self.show_clients),
             ('📥 Entrées Stock', self.show_entrees),
+            ('🔄 Ajustements Stock', self.show_ajustements),
             ('⚠️ Alertes Stock', self.show_alertes),
             ('📊 Statistiques', self.show_stats),
+            ('🧾 Historique Ventes', self.show_historique_ventes),
         ]
         
         if self.user_data and self.user_data['role'] == 'admin':
@@ -358,9 +415,17 @@ class MainScreen(Screen):
         self.manager.current = 'ventes'
         self.manager.get_screen('ventes').load_ventes()
     
+    def show_clients(self, instance=None):
+        self.manager.current = 'clients'
+        self.manager.get_screen('clients').load_clients()
+    
     def show_entrees(self, instance=None):
         self.manager.current = 'entrees'
         self.manager.get_screen('entrees').load_entrees()
+    
+    def show_ajustements(self, instance=None):
+        self.manager.current = 'ajustements'
+        self.manager.get_screen('ajustements').load_ajustements()
     
     def show_alertes(self, instance=None):
         self.manager.current = 'alertes'
@@ -369,6 +434,10 @@ class MainScreen(Screen):
     def show_stats(self, instance=None):
         self.manager.current = 'stats'
         self.manager.get_screen('stats').load_stats()
+    
+    def show_historique_ventes(self, instance=None):
+        self.manager.current = 'historique_ventes'
+        self.manager.get_screen('historique_ventes').load_historique()
     
     def show_users(self, instance=None):
         if self.user_data and self.user_data['role'] == 'admin':
@@ -381,8 +450,6 @@ class MainScreen(Screen):
         self.user_id = None
         self.user_data = None
         self.manager.current = 'login'
-        self.username.text = ""
-        self.password.text = ""
     
     def show_popup(self, title, message):
         content = BoxLayout(orientation='vertical', padding=dp(10), spacing=dp(10))
@@ -761,7 +828,7 @@ class VentesScreen(Screen):
         item = BoxLayout(
             orientation='vertical', 
             size_hint_y=None, 
-            height=dp(100),
+            height=dp(120),
             padding=dp(5)
         )
         
@@ -773,7 +840,7 @@ class VentesScreen(Screen):
         date_str = datetime.fromisoformat(data['date_vente']).strftime('%d/%m/%Y %H:%M')
         
         # Ligne 1: Produit et quantité
-        ligne1 = BoxLayout(orientation='horizontal', size_hint_y=0.4)
+        ligne1 = BoxLayout(orientation='horizontal', size_hint_y=0.3)
         ligne1.add_widget(Label(
             text=data['produit_nom'],
             font_size=dp(16),
@@ -788,7 +855,7 @@ class VentesScreen(Screen):
         ))
         
         # Ligne 2: Client et total
-        ligne2 = BoxLayout(orientation='horizontal', size_hint_y=0.3)
+        ligne2 = BoxLayout(orientation='horizontal', size_hint_y=0.25)
         ligne2.add_widget(Label(
             text=f"Client: {data.get('client', 'N/A')}",
             font_size=dp(12),
@@ -801,7 +868,7 @@ class VentesScreen(Screen):
         ))
         
         # Ligne 3: Date et gérant
-        ligne3 = BoxLayout(orientation='horizontal', size_hint_y=0.3)
+        ligne3 = BoxLayout(orientation='horizontal', size_hint_y=0.25)
         ligne3.add_widget(Label(
             text=date_str,
             font_size=dp(11),
@@ -813,10 +880,73 @@ class VentesScreen(Screen):
             color=(0.5, 0.5, 0.5, 1)
         ))
         
+        # Ligne 4: Bouton reçu
+        ligne4 = BoxLayout(orientation='horizontal', size_hint_y=0.2)
+        receipt_btn = Button(
+            text='🧾 Imprimer Reçu',
+            size_hint_x=0.6,
+            background_color=(0.1, 0.5, 0.8, 1),
+            color=(1, 1, 1, 1),
+            font_size=dp(10)
+        )
+        receipt_btn.bind(on_release=lambda x: self.print_receipt(vente_id, data))
+        
+        ligne4.add_widget(Label())  # Espace vide
+        ligne4.add_widget(receipt_btn)
+        
         item.add_widget(ligne1)
         item.add_widget(ligne2)
         item.add_widget(ligne3)
+        item.add_widget(ligne4)
         self.ventes_list.add_widget(item)
+    
+    def print_receipt(self, vente_id, vente_data):
+        """Génère et affiche un reçu pour la vente"""
+        receipt_text = ReceiptGenerator.generate_receipt(vente_data)
+        
+        # Afficher le reçu dans un popup
+        content = BoxLayout(orientation='vertical', padding=dp(10), spacing=dp(10))
+        
+        scroll = ScrollView()
+        receipt_label = Label(
+            text=receipt_text,
+            font_size=dp(10),
+            text_size=(dp(300), None),
+            halign='left',
+            valign='top',
+            size_hint_y=None
+        )
+        receipt_label.bind(texture_size=lambda instance, value: setattr(instance, 'height', value[1]))
+        scroll.add_widget(receipt_label)
+        
+        btn_layout = BoxLayout(orientation='horizontal', size_hint_y=0.2)
+        save_btn = Button(text='Sauvegarder', background_color=(0.2, 0.8, 0.2, 1))
+        print_btn = Button(text='Imprimer', background_color=(0.1, 0.5, 0.8, 1))
+        close_btn = Button(text='Fermer', background_color=(0.8, 0.8, 0.8, 1))
+        
+        popup = Popup(title='Reçu de Vente', content=content, size_hint=(0.9, 0.8))
+        
+        def save_receipt(instance):
+            if ReceiptGenerator.save_receipt_to_file(receipt_text):
+                self.show_popup("Succès", "Reçu sauvegardé avec succès")
+            else:
+                self.show_popup("Erreur", "Erreur lors de la sauvegarde")
+        
+        def print_receipt(instance):
+            # Pour l'impression réelle, vous pourriez intégrer une API d'impression
+            self.show_popup("Information", "Fonction d'impression à implémenter")
+        
+        save_btn.bind(on_release=save_receipt)
+        print_btn.bind(on_release=print_receipt)
+        close_btn.bind(on_release=popup.dismiss)
+        
+        btn_layout.add_widget(save_btn)
+        btn_layout.add_widget(print_btn)
+        btn_layout.add_widget(close_btn)
+        
+        content.add_widget(scroll)
+        content.add_widget(btn_layout)
+        popup.open()
     
     def add_vente(self, instance):
         self.show_vente_popup()
@@ -943,27 +1073,603 @@ class VentesScreen(Screen):
                 
                 if self.db and not DEMO_MODE:
                     # Enregistrer la vente
-                    self.db.collection('ventes').add(vente_data)
+                    vente_ref = self.db.collection('ventes').add(vente_data)
+                    vente_data['id'] = vente_ref[1].id
                     
                     # Mettre à jour le stock
                     produit_ref = self.db.collection('produits').document(produit_selectionne['id'])
                     produit_ref.update({'stock_actuel': firestore.Increment(-quantite)})
                 else:
                     # Mode démo
+                    vente_data['id'] = f"vente_{len(DemoData.ventes)}"
                     DemoData.ventes.append(vente_data)
                     # Mettre à jour le stock
                     DemoData.produits[produit_selectionne['id']]['stock_actuel'] -= quantite
                 
                 self.load_ventes()
                 popup.dismiss()
-                self.show_popup("Succès", "Vente enregistrée avec succès")
+                
+                # Proposer d'imprimer le reçu
+                self.show_print_option(vente_data)
                 
             except ValueError:
                 self.show_popup("Erreur", "Veuillez vérifier les nombres (quantité, prix)")
             except Exception as e:
                 self.show_popup("Erreur", f"Erreur: {str(e)}")
         
+        def show_print_option(vente_data):
+            content = BoxLayout(orientation='vertical', padding=dp(10), spacing=dp(10))
+            content.add_widget(Label(text="Vente enregistrée avec succès !"))
+            content.add_widget(Label(text="Souhaitez-vous imprimer un reçu ?"))
+            
+            btn_layout = BoxLayout(orientation='horizontal', size_hint_y=0.4)
+            print_btn = Button(text='Imprimer Reçu', background_color=(0.1, 0.5, 0.8, 1))
+            later_btn = Button(text='Plus tard', background_color=(0.8, 0.8, 0.8, 1))
+            
+            popup = Popup(title='Succès', content=content, size_hint=(0.8, 0.4))
+            
+            print_btn.bind(on_release=lambda x: [popup.dismiss(), self.print_receipt(vente_data['id'], vente_data)])
+            later_btn.bind(on_release=popup.dismiss)
+            
+            btn_layout.add_widget(print_btn)
+            btn_layout.add_widget(later_btn)
+            content.add_widget(btn_layout)
+            popup.open()
+        
         save_btn.bind(on_release=save_vente)
+        cancel_btn.bind(on_release=popup.dismiss)
+        
+        btn_layout.add_widget(save_btn)
+        btn_layout.add_widget(cancel_btn)
+        content.add_widget(btn_layout)
+        popup.open()
+    
+    def show_popup(self, title, message):
+        content = BoxLayout(orientation='vertical', padding=dp(10), spacing=dp(10))
+        content.add_widget(Label(text=message))
+        btn = Button(text='OK', size_hint_y=None, height=dp(50))
+        popup = Popup(title=title, content=content, size_hint=(0.8, 0.4))
+        btn.bind(on_release=popup.dismiss)
+        content.add_widget(btn)
+        popup.open()
+
+class ClientsScreen(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.db = db
+        self.create_interface()
+    
+    def create_interface(self):
+        layout = BoxLayout(orientation='vertical')
+        
+        # Header
+        header = BoxLayout(orientation='horizontal', size_hint_y=0.1, padding=dp(10))
+        
+        back_btn = Button(
+            text='← Retour',
+            size_hint_x=0.3,
+            background_color=(0.8, 0.2, 0.2, 1),
+            color=(1, 1, 1, 1)
+        )
+        back_btn.bind(on_release=lambda x: setattr(self.manager, 'current', 'main'))
+        
+        title = Label(
+            text='Clients',
+            font_size=dp(20),
+            color=(0.2, 0.4, 0.6, 1)
+        )
+        
+        add_btn = Button(
+            text='+ Ajouter',
+            size_hint_x=0.3,
+            background_color=(0.2, 0.8, 0.2, 1),
+            color=(1, 1, 1, 1)
+        )
+        add_btn.bind(on_release=self.add_client)
+        
+        header.add_widget(back_btn)
+        header.add_widget(title)
+        header.add_widget(add_btn)
+        layout.add_widget(header)
+        
+        # Liste des clients
+        scroll = ScrollView()
+        self.clients_list = GridLayout(
+            cols=1,
+            spacing=dp(5),
+            padding=dp(10),
+            size_hint_y=None
+        )
+        self.clients_list.bind(minimum_height=self.clients_list.setter('height'))
+        scroll.add_widget(self.clients_list)
+        layout.add_widget(scroll)
+        
+        self.add_widget(layout)
+    
+    def load_clients(self):
+        self.clients_list.clear_widgets()
+        
+        try:
+            if self.db and not DEMO_MODE:
+                clients_ref = self.db.collection('clients')
+                clients = clients_ref.stream()
+                
+                for client in clients:
+                    data = client.to_dict()
+                    self.add_client_item(client.id, data)
+            else:
+                # Données de démo
+                for i, client in enumerate(DemoData.clients):
+                    self.add_client_item(f"client_{i}", client)
+                    
+        except Exception as e:
+            print(f"Erreur chargement clients: {e}")
+    
+    def add_client_item(self, client_id, data):
+        item = BoxLayout(
+            orientation='horizontal', 
+            size_hint_y=None, 
+            height=dp(80),
+            padding=dp(5)
+        )
+        
+        with item.canvas.before:
+            Color(0.95, 0.95, 0.95, 1)
+            Rectangle(pos=item.pos, size=item.size)
+        
+        # Informations client
+        info_layout = BoxLayout(orientation='vertical')
+        
+        nom_label = Label(
+            text=data['nom'],
+            size_hint_y=0.5,
+            font_size=dp(16),
+            color=(0, 0, 0, 1)
+        )
+        
+        contact_label = Label(
+            text=f"Tel: {data.get('telephone', 'N/A')}",
+            size_hint_y=0.25,
+            font_size=dp(12),
+            color=(0.3, 0.3, 0.3, 1)
+        )
+        
+        email_label = Label(
+            text=f"Email: {data.get('email', 'N/A')}",
+            size_hint_y=0.25,
+            font_size=dp(12),
+            color=(0.3, 0.3, 0.3, 1)
+        )
+        
+        info_layout.add_widget(nom_label)
+        info_layout.add_widget(contact_label)
+        info_layout.add_widget(email_label)
+        item.add_widget(info_layout)
+        
+        # Boutons d'action
+        btn_layout = BoxLayout(orientation='vertical', size_hint_x=0.4, spacing=dp(2))
+        
+        edit_btn = Button(
+            text='Modifier',
+            size_hint_y=0.5,
+            background_color=(1, 0.6, 0, 1),
+            color=(1, 1, 1, 1),
+            font_size=dp(10)
+        )
+        
+        delete_btn = Button(
+            text='Supprimer',
+            size_hint_y=0.5,
+            background_color=(0.8, 0.2, 0.2, 1),
+            color=(1, 1, 1, 1),
+            font_size=dp(10)
+        )
+        
+        edit_btn.bind(on_release=lambda x: self.edit_client(client_id, data))
+        delete_btn.bind(on_release=lambda x: self.delete_client(client_id, data['nom']))
+        
+        btn_layout.add_widget(edit_btn)
+        btn_layout.add_widget(delete_btn)
+        item.add_widget(btn_layout)
+        
+        self.clients_list.add_widget(item)
+    
+    def add_client(self, instance):
+        self.show_client_popup()
+    
+    def edit_client(self, client_id, data):
+        self.show_client_popup(client_id, data)
+    
+    def delete_client(self, client_id, nom):
+        content = BoxLayout(orientation='vertical', padding=dp(10), spacing=dp(10))
+        content.add_widget(Label(text=f"Supprimer le client {nom} ?"))
+        
+        btn_layout = BoxLayout(orientation='horizontal', size_hint_y=0.4)
+        confirm_btn = Button(text='Oui', background_color=(0.8, 0.2, 0.2, 1))
+        cancel_btn = Button(text='Non')
+        
+        popup = Popup(title='Confirmation', content=content, size_hint=(0.8, 0.4))
+        
+        def confirm_delete(instance):
+            try:
+                if self.db and not DEMO_MODE:
+                    self.db.collection('clients').document(client_id).delete()
+                else:
+                    DemoData.clients = [c for c in DemoData.clients if c.get('id') != client_id]
+                
+                self.load_clients()
+                popup.dismiss()
+                self.show_popup("Succès", "Client supprimé avec succès")
+            except Exception as e:
+                self.show_popup("Erreur", f"Erreur suppression: {str(e)}")
+        
+        confirm_btn.bind(on_release=confirm_delete)
+        cancel_btn.bind(on_release=popup.dismiss)
+        
+        btn_layout.add_widget(confirm_btn)
+        btn_layout.add_widget(cancel_btn)
+        content.add_widget(btn_layout)
+        popup.open()
+    
+    def show_client_popup(self, client_id=None, data=None):
+        content = BoxLayout(orientation='vertical', padding=dp(10), spacing=dp(10))
+        
+        # Champs du formulaire
+        nom_input = TextInput(
+            hint_text='Nom complet', 
+            text=data['nom'] if data else '',
+            size_hint_y=None,
+            height=dp(50)
+        )
+        telephone_input = TextInput(
+            hint_text='Téléphone', 
+            text=data.get('telephone', '') if data else '',
+            size_hint_y=None,
+            height=dp(50)
+        )
+        email_input = TextInput(
+            hint_text='Email', 
+            text=data.get('email', '') if data else '',
+            size_hint_y=None,
+            height=dp(50)
+        )
+        adresse_input = TextInput(
+            hint_text='Adresse', 
+            text=data.get('adresse', '') if data else '',
+            size_hint_y=None,
+            height=dp(80),
+            multiline=True
+        )
+        
+        content.add_widget(Label(text='Nom complet:', size_hint_y=None, height=dp(30)))
+        content.add_widget(nom_input)
+        content.add_widget(Label(text='Téléphone:', size_hint_y=None, height=dp(30)))
+        content.add_widget(telephone_input)
+        content.add_widget(Label(text='Email:', size_hint_y=None, height=dp(30)))
+        content.add_widget(email_input)
+        content.add_widget(Label(text='Adresse:', size_hint_y=None, height=dp(30)))
+        content.add_widget(adresse_input)
+        
+        # Boutons
+        btn_layout = BoxLayout(orientation='horizontal', size_hint_y=0.3)
+        save_btn = Button(text='Enregistrer', background_color=(0.2, 0.8, 0.2, 1))
+        cancel_btn = Button(text='Annuler', background_color=(0.8, 0.8, 0.8, 1))
+        
+        popup = Popup(
+            title='Ajouter client' if not data else 'Modifier client', 
+            content=content, 
+            size_hint=(0.9, 0.8)
+        )
+        
+        def save_client(instance):
+            try:
+                if not nom_input.text:
+                    self.show_popup("Erreur", "Le nom est obligatoire")
+                    return
+                
+                client_data = {
+                    'nom': nom_input.text,
+                    'telephone': telephone_input.text or None,
+                    'email': email_input.text or None,
+                    'adresse': adresse_input.text or None,
+                    'date_creation': datetime.now().isoformat()
+                }
+                
+                if self.db and not DEMO_MODE:
+                    if client_id:
+                        self.db.collection('clients').document(client_id).update(client_data)
+                    else:
+                        self.db.collection('clients').add(client_data)
+                else:
+                    if client_id:
+                        for client in DemoData.clients:
+                            if client.get('id') == client_id:
+                                client.update(client_data)
+                                break
+                    else:
+                        new_id = f"client_{len(DemoData.clients)}"
+                        client_data['id'] = new_id
+                        DemoData.clients.append(client_data)
+                
+                self.load_clients()
+                popup.dismiss()
+                self.show_popup("Succès", "Client enregistré avec succès")
+                
+            except Exception as e:
+                self.show_popup("Erreur", f"Erreur: {str(e)}")
+        
+        save_btn.bind(on_release=save_client)
+        cancel_btn.bind(on_release=popup.dismiss)
+        
+        btn_layout.add_widget(save_btn)
+        btn_layout.add_widget(cancel_btn)
+        content.add_widget(btn_layout)
+        popup.open()
+    
+    def show_popup(self, title, message):
+        content = BoxLayout(orientation='vertical', padding=dp(10), spacing=dp(10))
+        content.add_widget(Label(text=message))
+        btn = Button(text='OK', size_hint_y=None, height=dp(50))
+        popup = Popup(title=title, content=content, size_hint=(0.8, 0.4))
+        btn.bind(on_release=popup.dismiss)
+        content.add_widget(btn)
+        popup.open()
+
+class AjustementsScreen(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.db = db
+        self.create_interface()
+    
+    def create_interface(self):
+        layout = BoxLayout(orientation='vertical')
+        
+        # Header
+        header = BoxLayout(orientation='horizontal', size_hint_y=0.1, padding=dp(10))
+        
+        back_btn = Button(
+            text='← Retour',
+            size_hint_x=0.3,
+            background_color=(0.8, 0.2, 0.2, 1),
+            color=(1, 1, 1, 1)
+        )
+        back_btn.bind(on_release=lambda x: setattr(self.manager, 'current', 'main'))
+        
+        title = Label(
+            text='Ajustements Stock',
+            font_size=dp(20),
+            color=(0.2, 0.4, 0.6, 1)
+        )
+        
+        add_btn = Button(
+            text='+ Ajuster',
+            size_hint_x=0.3,
+            background_color=(0.2, 0.8, 0.2, 1),
+            color=(1, 1, 1, 1)
+        )
+        add_btn.bind(on_release=self.add_ajustement)
+        
+        header.add_widget(back_btn)
+        header.add_widget(title)
+        header.add_widget(add_btn)
+        layout.add_widget(header)
+        
+        # Liste des ajustements
+        scroll = ScrollView()
+        self.ajustements_list = GridLayout(
+            cols=1,
+            spacing=dp(5),
+            padding=dp(10),
+            size_hint_y=None
+        )
+        self.ajustements_list.bind(minimum_height=self.ajustements_list.setter('height'))
+        scroll.add_widget(self.ajustements_list)
+        layout.add_widget(scroll)
+        
+        self.add_widget(layout)
+    
+    def load_ajustements(self):
+        self.ajustements_list.clear_widgets()
+        
+        try:
+            if self.db and not DEMO_MODE:
+                ajustements_ref = self.db.collection('ajustements')
+                ajustements = ajustements_ref.order_by('date_ajustement', direction=firestore.Query.DESCENDING).stream()
+                
+                for ajustement in ajustements:
+                    data = ajustement.to_dict()
+                    self.add_ajustement_item(ajustement.id, data)
+            else:
+                # Données de démo
+                for i, ajustement in enumerate(DemoData.ajustements):
+                    self.add_ajustement_item(f"ajustement_{i}", ajustement)
+                    
+        except Exception as e:
+            print(f"Erreur chargement ajustements: {e}")
+    
+    def add_ajustement_item(self, ajustement_id, data):
+        item = BoxLayout(
+            orientation='vertical', 
+            size_hint_y=None, 
+            height=dp(100),
+            padding=dp(5)
+        )
+        
+        with item.canvas.before:
+            Color(0.95, 0.95, 0.95, 1)
+            Rectangle(pos=item.pos, size=item.size)
+        
+        date_str = datetime.fromisoformat(data['date_ajustement']).strftime('%d/%m/%Y %H:%M')
+        type_ajustement = "Augmentation" if data['quantite'] > 0 else "Réduction"
+        
+        # Ligne 1: Produit et type
+        ligne1 = BoxLayout(orientation='horizontal', size_hint_y=0.4)
+        ligne1.add_widget(Label(
+            text=data['produit_nom'],
+            font_size=dp(16),
+            color=(0, 0, 0, 1)
+        ))
+        ligne1.add_widget(Label(
+            text=type_ajustement,
+            font_size=dp(14),
+            color=(0.2, 0.6, 0.2, 1) if data['quantite'] > 0 else (0.8, 0.2, 0.2, 1)
+        ))
+        
+        # Ligne 2: Quantité et stock
+        ligne2 = BoxLayout(orientation='horizontal', size_hint_y=0.3)
+        ligne2.add_widget(Label(
+            text=f"Quantité: {data['quantite']:+d}",
+            font_size=dp(12),
+            color=(0.3, 0.3, 0.3, 1)
+        ))
+        ligne2.add_widget(Label(
+            text=f"Nouveau stock: {data['nouveau_stock']}",
+            font_size=dp(12),
+            color=(0.3, 0.3, 0.3, 1)
+        ))
+        
+        # Ligne 3: Date et raison
+        ligne3 = BoxLayout(orientation='horizontal', size_hint_y=0.3)
+        ligne3.add_widget(Label(
+            text=date_str,
+            font_size=dp(11),
+            color=(0.5, 0.5, 0.5, 1)
+        ))
+        ligne3.add_widget(Label(
+            text=f"Raison: {data.get('raison', 'N/A')}",
+            font_size=dp(11),
+            color=(0.5, 0.5, 0.5, 1)
+        ))
+        
+        item.add_widget(ligne1)
+        item.add_widget(ligne2)
+        item.add_widget(ligne3)
+        self.ajustements_list.add_widget(item)
+    
+    def add_ajustement(self, instance):
+        self.show_ajustement_popup()
+    
+    def show_ajustement_popup(self):
+        content = BoxLayout(orientation='vertical', padding=dp(10), spacing=dp(10))
+        
+        # Sélection produit
+        produit_spinner = Spinner(
+            text='Sélectionner produit',
+            size_hint_y=None,
+            height=dp(50)
+        )
+        
+        # Charger tous les produits
+        produits = []
+        if self.db and not DEMO_MODE:
+            produits_ref = self.db.collection('produits')
+            produits_docs = produits_ref.stream()
+            for produit in produits_docs:
+                data = produit.to_dict()
+                produits.append({
+                    'id': produit.id,
+                    'nom': data['nom'],
+                    'stock': data['stock_actuel']
+                })
+        else:
+            for prod_id, data in DemoData.produits.items():
+                produits.append({
+                    'id': prod_id,
+                    'nom': data['nom'],
+                    'stock': data['stock_actuel']
+                })
+        
+        produit_spinner.values = [f"{p['nom']} (Stock: {p['stock']})" for p in produits]
+        if produits:
+            produit_spinner.text = produit_spinner.values[0]
+        
+        quantite_input = TextInput(
+            hint_text='Quantité (+ pour ajouter, - pour retirer)',
+            size_hint_y=None,
+            height=dp(50),
+            input_filter='int'
+        )
+        
+        raison_input = TextInput(
+            hint_text='Raison de l\'ajustement',
+            size_hint_y=None,
+            height=dp(80),
+            multiline=True
+        )
+        
+        content.add_widget(Label(text='Produit:', size_hint_y=None, height=dp(30)))
+        content.add_widget(produit_spinner)
+        content.add_widget(Label(text='Quantité:', size_hint_y=None, height=dp(30)))
+        content.add_widget(quantite_input)
+        content.add_widget(Label(text='Raison:', size_hint_y=None, height=dp(30)))
+        content.add_widget(raison_input)
+        
+        # Boutons
+        btn_layout = BoxLayout(orientation='horizontal', size_hint_y=0.3)
+        save_btn = Button(text='Enregistrer', background_color=(0.2, 0.8, 0.2, 1))
+        cancel_btn = Button(text='Annuler', background_color=(0.8, 0.8, 0.8, 1))
+        
+        popup = Popup(title='Nouvel ajustement stock', content=content, size_hint=(0.9, 0.7))
+        
+        def save_ajustement(instance):
+            try:
+                if produit_spinner.text == 'Sélectionner produit':
+                    self.show_popup("Erreur", "Veuillez sélectionner un produit")
+                    return
+                
+                if not quantite_input.text:
+                    self.show_popup("Erreur", "La quantité est obligatoire")
+                    return
+                
+                index = produit_spinner.values.index(produit_spinner.text)
+                produit_selectionne = produits[index]
+                quantite = int(quantite_input.text)
+                raison = raison_input.text.strip() or "Ajustement manuel"
+                
+                if quantite == 0:
+                    self.show_popup("Erreur", "La quantité ne peut pas être zéro")
+                    return
+                
+                nouveau_stock = produit_selectionne['stock'] + quantite
+                if nouveau_stock < 0:
+                    self.show_popup("Erreur", "Le stock ne peut pas être négatif")
+                    return
+                
+                ajustement_data = {
+                    'produit_id': produit_selectionne['id'],
+                    'produit_nom': produit_selectionne['nom'],
+                    'quantite': quantite,
+                    'stock_avant': produit_selectionne['stock'],
+                    'nouveau_stock': nouveau_stock,
+                    'raison': raison,
+                    'gerant_id': App.get_running_app().root.get_screen('main').user_id,
+                    'gerant_nom': App.get_running_app().root.get_screen('main').user_data['nom_complet'],
+                    'date_ajustement': datetime.now().isoformat()
+                }
+                
+                if self.db and not DEMO_MODE:
+                    # Enregistrer l'ajustement
+                    self.db.collection('ajustements').add(ajustement_data)
+                    
+                    # Mettre à jour le stock
+                    produit_ref = self.db.collection('produits').document(produit_selectionne['id'])
+                    produit_ref.update({'stock_actuel': nouveau_stock})
+                else:
+                    # Mode démo
+                    DemoData.ajustements.append(ajustement_data)
+                    # Mettre à jour le stock
+                    DemoData.produits[produit_selectionne['id']]['stock_actuel'] = nouveau_stock
+                
+                self.load_ajustements()
+                popup.dismiss()
+                self.show_popup("Succès", "Ajustement de stock enregistré avec succès")
+                
+            except ValueError:
+                self.show_popup("Erreur", "Veuillez vérifier la quantité")
+            except Exception as e:
+                self.show_popup("Erreur", f"Erreur: {str(e)}")
+        
+        save_btn.bind(on_release=save_ajustement)
         cancel_btn.bind(on_release=popup.dismiss)
         
         btn_layout.add_widget(save_btn)
@@ -1841,6 +2547,223 @@ class UsersScreen(Screen):
         btn.bind(on_release=popup.dismiss)
         content.add_widget(btn)
         popup.open()
+        
+class HistoriqueVentesScreen(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.db = db
+        self.create_interface()
+    
+    def create_interface(self):
+        layout = BoxLayout(orientation='vertical')
+        
+        # Header
+        header = BoxLayout(orientation='horizontal', size_hint_y=0.1, padding=dp(10))
+        
+        back_btn = Button(
+            text='← Retour',
+            size_hint_x=0.3,
+            background_color=(0.8, 0.2, 0.2, 1),
+            color=(1, 1, 1, 1)
+        )
+        back_btn.bind(on_release=lambda x: setattr(self.manager, 'current', 'main'))
+        
+        title = Label(
+            text='Historique Ventes',
+            font_size=dp(20),
+            color=(0.2, 0.4, 0.6, 1)
+        )
+        
+        header.add_widget(back_btn)
+        header.add_widget(title)
+        header.add_widget(Label())
+        layout.add_widget(header)
+        
+        # Filtres
+        filtres_layout = BoxLayout(orientation='horizontal', size_hint_y=0.1, padding=dp(5))
+        
+        date_debut = TextInput(
+            hint_text='Date début (JJ/MM/AAAA)',
+            size_hint_x=0.4,
+            height=dp(40)
+        )
+        
+        date_fin = TextInput(
+            hint_text='Date fin (JJ/MM/AAAA)',
+            size_hint_x=0.4,
+            height=dp(40)
+        )
+        
+        filter_btn = Button(
+            text='Filtrer',
+            size_hint_x=0.2,
+            background_color=(0.2, 0.6, 0.8, 1),
+            color=(1, 1, 1, 1)
+        )
+        filter_btn.bind(on_release=lambda x: self.filtrer_ventes(date_debut.text, date_fin.text))
+        
+        filtres_layout.add_widget(date_debut)
+        filtres_layout.add_widget(date_fin)
+        filtres_layout.add_widget(filter_btn)
+        layout.add_widget(filtres_layout)
+        
+        # Liste des ventes
+        scroll = ScrollView()
+        self.historique_list = GridLayout(
+            cols=1,
+            spacing=dp(5),
+            padding=dp(10),
+            size_hint_y=None
+        )
+        self.historique_list.bind(minimum_height=self.historique_list.setter('height'))
+        scroll.add_widget(self.historique_list)
+        layout.add_widget(scroll)
+        
+        self.add_widget(layout)
+    
+    def load_historique(self):
+        self.historique_list.clear_widgets()
+        self.filtrer_ventes(None, None)
+    
+    def filtrer_ventes(self, date_debut, date_fin):
+        self.historique_list.clear_widgets()
+        
+        try:
+            ventes_filtrees = []
+            
+            if self.db and not DEMO_MODE:
+                ventes_ref = self.db.collection('ventes')
+                query = ventes_ref.order_by('date_vente', direction=firestore.Query.DESCENDING)
+                
+                if date_debut:
+                    try:
+                        start_date = datetime.strptime(date_debut, '%d/%m/%Y')
+                        query = query.where('date_vente', '>=', start_date.isoformat())
+                    except ValueError:
+                        self.show_popup("Erreur", "Format date début invalide")
+                
+                if date_fin:
+                    try:
+                        end_date = datetime.strptime(date_fin, '%d/%m/%Y')
+                        end_date = end_date.replace(hour=23, minute=59, second=59)
+                        query = query.where('date_vente', '<=', end_date.isoformat())
+                    except ValueError:
+                        self.show_popup("Erreur", "Format date fin invalide")
+                
+                ventes = query.stream()
+                for vente in ventes:
+                    data = vente.to_dict()
+                    ventes_filtrees.append((vente.id, data))
+            else:
+                # Données de démo
+                for i, vente in enumerate(DemoData.ventes):
+                    ventes_filtrees.append((f"vente_{i}", vente))
+            
+            if not ventes_filtrees:
+                self.historique_list.add_widget(Label(
+                    text='Aucune vente trouvée',
+                    font_size=dp(16),
+                    color=(0.5, 0.5, 0.5, 1),
+                    size_hint_y=None,
+                    height=dp(50)
+                ))
+                return
+            
+            total_ca = 0
+            for vente_id, data in ventes_filtrees:
+                self.add_historique_item(vente_id, data)
+                total_ca += data['quantite'] * data['prix_unitaire']
+            
+            # Résumé
+            resume_item = BoxLayout(
+                orientation='horizontal', 
+                size_hint_y=None, 
+                height=dp(60),
+                padding=dp(5)
+            )
+            
+            with resume_item.canvas.before:
+                Color(0.2, 0.6, 0.8, 1)
+                Rectangle(pos=resume_item.pos, size=resume_item.size)
+            
+            resume_item.add_widget(Label(
+                text=f"Total: {len(ventes_filtrees)} ventes",
+                font_size=dp(16),
+                color=(1, 1, 1, 1)
+            ))
+            resume_item.add_widget(Label(
+                text=f"CA: {total_ca:.2f}€",
+                font_size=dp(16),
+                color=(1, 1, 1, 1)
+            ))
+            
+            self.historique_list.add_widget(resume_item)
+                    
+        except Exception as e:
+            print(f"Erreur chargement historique: {e}")
+    
+    def add_historique_item(self, vente_id, data):
+        item = BoxLayout(
+            orientation='vertical', 
+            size_hint_y=None, 
+            height=dp(100),
+            padding=dp(5)
+        )
+        
+        with item.canvas.before:
+            Color(0.95, 0.95, 0.95, 1)
+            Rectangle(pos=item.pos, size=item.size)
+        
+        total = data['quantite'] * data['prix_unitaire']
+        date_str = datetime.fromisoformat(data['date_vente']).strftime('%d/%m/%Y %H:%M')
+        
+        # Ligne 1: Produit et quantité
+        ligne1 = BoxLayout(orientation='horizontal', size_hint_y=0.4)
+        ligne1.add_widget(Label(
+            text=data['produit_nom'],
+            font_size=dp(16),
+            color=(0, 0, 0, 1)
+        ))
+        ligne1.add_widget(Label(
+            text=f"x{data['quantite']}",
+            font_size=dp(16),
+            color=(0.3, 0.3, 0.3, 1)
+        ))
+        
+        # Ligne 2: Client et total
+        ligne2 = BoxLayout(orientation='horizontal', size_hint_y=0.3)
+        ligne2.add_widget(Label(
+            text=f"Client: {data.get('client', 'N/A')}",
+            font_size=dp(12),
+            color=(0.3, 0.3, 0.3, 1)
+        ))
+        ligne2.add_widget(Label(
+            text=f"Total: {total:.2f}€",
+            font_size=dp(14),
+            color=(0.2, 0.6, 0.2, 1)
+        ))
+        
+        # Ligne 3: Date
+        ligne3 = BoxLayout(orientation='horizontal', size_hint_y=0.3)
+        ligne3.add_widget(Label(
+            text=date_str,
+            font_size=dp(11),
+            color=(0.5, 0.5, 0.5, 1)
+        ))
+        
+        item.add_widget(ligne1)
+        item.add_widget(ligne2)
+        item.add_widget(ligne3)
+        self.historique_list.add_widget(item)
+    
+    def show_popup(self, title, message):
+        content = BoxLayout(orientation='vertical', padding=dp(10), spacing=dp(10))
+        content.add_widget(Label(text=message))
+        btn = Button(text='OK', size_hint_y=None, height=dp(50))
+        popup = Popup(title=title, content=content, size_hint=(0.8, 0.4))
+        btn.bind(on_release=popup.dismiss)
+        content.add_widget(btn)
+        popup.open()
 
 class LeTousgestionsApp(App):
     def build(self):
@@ -1851,10 +2774,13 @@ class LeTousgestionsApp(App):
         sm.add_widget(MainScreen(name='main'))
         sm.add_widget(ProduitsScreen(name='produits'))
         sm.add_widget(VentesScreen(name='ventes'))
+        sm.add_widget(ClientsScreen(name='clients'))
         sm.add_widget(EntreesScreen(name='entrees'))
+        sm.add_widget(AjustementsScreen(name='ajustements'))
         sm.add_widget(AlertesScreen(name='alertes'))
         sm.add_widget(StatsScreen(name='stats'))
         sm.add_widget(UsersScreen(name='users'))
+        sm.add_widget(HistoriqueVentesScreen(name='historique_ventes'))
         
         return sm
 
