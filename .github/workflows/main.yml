@@ -2,9 +2,11 @@ name: Build Android APK
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main, master, develop ]
   pull_request:
     branches: [ main, master ]
+  release:
+    types: [ published ]
 
 jobs:
   build:
@@ -12,19 +14,17 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
-
+      uses: actions/checkout@v4
+      
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.9'
-
+        
     - name: Install system dependencies
       run: |
         sudo apt-get update
         sudo apt-get install -y \
-          python3-pip \
-          build-essential \
           git \
           zip \
           unzip \
@@ -39,36 +39,33 @@ jobs:
           cmake \
           libffi-dev \
           libssl-dev
-
+          
     - name: Install Buildozer
       run: |
-        pip3 install --upgrade pip
-        pip3 install buildozer
-        pip3 install cython
-
+        pip install --upgrade pip
+        pip install buildozer
+        pip install cython==0.29.33
+        
     - name: Build APK with Buildozer
       run: |
-        buildozer android debug
-        ls -la bin/
-
+        buildozer -v android debug
+        # Pour build release (nécessite une clé de signature) :
+        # buildozer -v android release
+        
     - name: Upload APK artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: LeTousgestions-APK
         path: bin/*.apk
         retention-days: 30
-
-    - name: Create Release
-      if: github.ref == 'refs/heads/main'
-      uses: softprops/action-gh-release@v1
+        
+    - name: Upload to GitHub Releases
+      if: github.event_name == 'release'
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        files: bin/*.apk
-        tag_name: v1.0.0-${{ github.run_number }}
-        name: Release v1.0.0-${{ github.run_number }}
-        body: |
-          APK généré automatiquement par GitHub Actions
-          
-          **Changelog:**
-          - Application LeTousgestions complète
-          - Gestion des stocks et ventes
-          - Interface mobile optimisée
+        upload_url: ${{ github.event.release.upload_url }}
+        asset_path: ./bin/*.apk
+        asset_name: LeTousgestions-${{ github.event.release.tag_name }}.apk
+        asset_content_type: application/vnd.android.package-archive
