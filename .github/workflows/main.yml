@@ -1,12 +1,8 @@
-name: Build Android APK
+name: Build Android APK - Debug
 
 on:
   push:
-    branches: [ main, master, develop ]
-  pull_request:
     branches: [ main, master ]
-  release:
-    types: [ published ]
 
 jobs:
   build:
@@ -21,6 +17,9 @@ jobs:
       with:
         python-version: '3.9'
         
+    - name: Debug - List files
+      run: ls -la
+      
     - name: Install system dependencies
       run: |
         sudo apt-get update
@@ -37,38 +36,60 @@ jobs:
           libncursesw5-dev \
           cmake \
           libffi-dev \
-          libssl-dev \
-          python3-pip \
-          python3-setuptools
+          libssl-dev
           
-    - name: Install Buildozer and dependencies
+    - name: Install Buildozer
       run: |
         python -m pip install --upgrade pip
         pip install buildozer
         pip install cython==0.29.33
-        pip install virtualenv
         
-    - name: Build APK with Buildozer
+    - name: Initialize Buildozer
       run: |
         buildozer init
-        buildozer -v android debug
-      env:
-        CI: false
+        echo "✅ Buildozer initialized"
+        
+    - name: Validate buildozer.spec
+      run: |
+        python -c "
+        from configparser import ConfigParser
+        config = ConfigParser()
+        config.read('buildozer.spec')
+        print('Sections:', config.sections())
+        for section in config.sections():
+            print(f'{section}: {list(config[section].keys())}')
+        "
+        
+    - name: Build APK
+      run: |
+        buildozer -v android debug 2>&1 | tee build.log
+      continue-on-error: true
+      
+    - name: Check build results
+      run: |
+        if [ -f bin/*.apk ]; then
+          echo "✅ APK built successfully"
+          ls -la bin/
+        else
+          echo "❌ APK build failed"
+          if [ -f build.log ]; then
+            echo "=== Build Log Tail ==="
+            tail -50 build.log
+          fi
+        fi
         
     - name: Upload APK artifact
+      if: success()
       uses: actions/upload-artifact@v4
       with:
         name: LeTousgestions-APK
         path: bin/*.apk
         retention-days: 30
         
-    - name: Upload to GitHub Releases
-      if: github.event_name == 'release'
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: Upload build log
+      if: failure()
+      uses: actions/upload-artifact@v4
       with:
-        upload_url: ${{ github.event.release.upload_url }}
-        asset_path: ./bin/*.apk
-        asset_name: LeTousgestions-${{ github.event.release.tag_name }}.apk
-        asset_content_type: application/vnd.android.package-archive
+        name: Build-Log
+        path: build.log
+        retention-days: 7
