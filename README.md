@@ -1,33 +1,24 @@
 # LeTousgestions - Application Mobile de Gestion
 
-Application mobile complète de gestion de stock et ventes.
+Application mobile de gestion de stock et ventes développée avec Kivy.
 
-## 📱 Fonctionnalités
+## 🚀 Fonctionnalités
 
-- ✅ Gestion des produits et stocks
-- ✅ Module de vente complet
-- ✅ Entrées et sorties de stock
-- ✅ Alertes de stock bas
-- ✅ Statistiques détaillées
-- ✅ Gestion multi-utilisateurs
+- Gestion des produits et stocks
+- Ventes et génération de reçus
+- Gestion des clients
+- Alertes de stock bas
+- Statistiques et rapports
+- Synchronisation Firebase (optionnelle)
 
-## 🚀 Installation
+## 📱 Build Android
 
-### Télécharger l'APK
+### Prérequis
+- Python 3.8+
+- Buildozer
+- Android SDK/NDK
 
-1. Allez dans l'onglet "Releases" de ce repository
-2. Téléchargez le dernier APK disponible
-3. Installez sur votre appareil Android
-
-### Identifiants de test
-
-- **Admin**: `admin` / `admin123`
-- **Gérant**: `gerant1` / `pass123`
-
-## 🔧 Build manuel
-
-Si vous voulez builder l'APK vous-même :
-
+### Build local
 ```bash
 pip install buildozer
 buildozer android debug
