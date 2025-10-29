@@ -10,7 +10,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04  # Utiliser Ubuntu 22.04 au lieu de latest
+    runs-on: ubuntu-22.04
     
     steps:
     - name: Checkout code
@@ -43,18 +43,17 @@ jobs:
           
     - name: Install Buildozer and dependencies
       run: |
-        pip install --upgrade pip
+        python -m pip install --upgrade pip
         pip install buildozer
         pip install cython==0.29.33
         pip install virtualenv
         
     - name: Build APK with Buildozer
       run: |
+        buildozer init
         buildozer -v android debug
       env:
-        # Variables d'environnement pour éviter certains problèmes
         CI: false
-        BUILD_WITH_COLORS: false
         
     - name: Upload APK artifact
       uses: actions/upload-artifact@v4
