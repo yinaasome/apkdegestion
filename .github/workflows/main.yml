@@ -1,7 +1,9 @@
-name: Build Android APK - Debug
+name: Build Android APK - Robust
 
 on:
   push:
+    branches: [ main, master ]
+  pull_request:
     branches: [ main, master ]
 
 jobs:
@@ -12,16 +14,20 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       
+    - name: Setup environment
+      run: |
+        echo "📋 Configuration de l'environnement..."
+        mkdir -p bin assets
+        ls -la
+        
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.9'
         
-    - name: Debug - List files
-      run: ls -la
-      
     - name: Install system dependencies
       run: |
+        echo "📦 Installation des dépendances système..."
         sudo apt-get update
         sudo apt-get install -y \
           git \
@@ -36,49 +42,71 @@ jobs:
           libncursesw5-dev \
           cmake \
           libffi-dev \
-          libssl-dev
+          libssl-dev \
+          python3-pip \
+          python3-setuptools
           
     - name: Install Buildozer
       run: |
+        echo "🛠️ Installation de Buildozer..."
         python -m pip install --upgrade pip
         pip install buildozer
         pip install cython==0.29.33
         
-    - name: Initialize Buildozer
-      run: |
-        buildozer init
-        echo "✅ Buildozer initialized"
-        
     - name: Validate buildozer.spec
       run: |
-        python -c "
-        from configparser import ConfigParser
-        config = ConfigParser()
-        config.read('buildozer.spec')
-        print('Sections:', config.sections())
-        for section in config.sections():
-            print(f'{section}: {list(config[section].keys())}')
-        "
+        echo "🔍 Validation du fichier buildozer.spec..."
+        if [ ! -f "buildozer.spec" ]; then
+          echo "❌ buildozer.spec non trouvé"
+          exit 1
+        fi
+        
+        # Vérifier les erreurs courantes
+        if grep -q "version.regex" buildozer.spec && grep -q "^version = " buildozer.spec; then
+          echo "❌ Conflict entre version et version.regex détecté"
+          exit 1
+        fi
+        
+        if grep -q "android.bootstrap" buildozer.spec; then
+          echo "❌ android.bootstrap est déprécié, utilisez p4a.bootstrap"
+          exit 1
+        fi
+        
+        echo "✅ buildozer.spec semble valide"
         
     - name: Build APK
       run: |
-        buildozer -v android debug 2>&1 | tee build.log
-      continue-on-error: true
-      
-    - name: Check build results
-      run: |
-        if [ -f bin/*.apk ]; then
-          echo "✅ APK built successfully"
-          ls -la bin/
+        echo "🏗️ Démarrage du build Android..."
+        
+        # Nettoyer les builds précédents
+        rm -rf .buildozer/bin
+        
+        # Build avec logging détaillé
+        {
+          echo "=== DÉBUT DU BUILD ==="
+          date
+          buildozer -v android debug
+          BUILD_EXIT_CODE=$?
+          echo "=== CODE DE SORTIE: $BUILD_EXIT_CODE ==="
+          date
+          echo "=== FIN DU BUILD ==="
+        } 2>&1 | tee full_build.log
+        
+        # Vérifier le résultat
+        if [ $BUILD_EXIT_CODE -eq 0 ] && ls bin/*.apk 1> /dev/null 2>&1; then
+          echo "🎉 BUILD RÉUSSI!"
+          echo "📱 APK créé:"
+          ls -la bin/*.apk
+          APK_SIZE=$(du -h bin/*.apk | cut -f1)
+          echo "📦 Taille de l'APK: $APK_SIZE"
         else
-          echo "❌ APK build failed"
-          if [ -f build.log ]; then
-            echo "=== Build Log Tail ==="
-            tail -50 build.log
-          fi
+          echo "💥 BUILD ÉCHOUÉ"
+          echo "=== DERNIÈRES LIGNES DU LOG ==="
+          tail -100 full_build.log
+          exit 1
         fi
         
-    - name: Upload APK artifact
+    - name: Upload APK
       if: success()
       uses: actions/upload-artifact@v4
       with:
@@ -86,10 +114,18 @@ jobs:
         path: bin/*.apk
         retention-days: 30
         
-    - name: Upload build log
-      if: failure()
+    - name: Upload build logs
+      if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: Build-Log
-        path: build.log
+        name: Build-Logs
+        path: |
+          full_build.log
+          .buildozer/android/platform/build-*/build.output
         retention-days: 7
+        
+    - name: Show success message
+      if: success()
+      run: |
+        echo "🎊 Félicitations! Le build a réussi!"
+        echo "📥 L'APK est disponible dans les artefacts du workflow"
