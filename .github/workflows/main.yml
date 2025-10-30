@@ -61,18 +61,30 @@ jobs:
           sed -i 's/android.bootstrap/p4a.bootstrap/g' buildozer.spec
         fi
         
-        # Forcer une version stable des build-tools
+        # Remplacer android.arch par android.archs (nouveau format)
+        if grep -q "android.arch = " buildozer.spec; then
+          echo "⚠️  Remplacement de android.arch par android.archs"
+          sed -i 's/android.arch = /android.archs = /g' buildozer.spec
+        fi
+        
+        # Supprimer android.sdk (deprecated)
+        if grep -q "^android.sdk = " buildozer.spec; then
+          echo "⚠️  Suppression de android.sdk (deprecated)"
+          sed -i '/^android.sdk = /d' buildozer.spec
+        fi
+        
+        # Forcer les versions stables
         if ! grep -q "android.api = " buildozer.spec; then
           echo "android.api = 33" >> buildozer.spec
         fi
         if ! grep -q "android.minapi = " buildozer.spec; then
           echo "android.minapi = 21" >> buildozer.spec
         fi
-        if ! grep -q "android.sdk = " buildozer.spec; then
-          echo "android.sdk = 33" >> buildozer.spec
-        fi
         if ! grep -q "android.ndk = " buildozer.spec; then
           echo "android.ndk = 25b" >> buildozer.spec
+        fi
+        if ! grep -q "android.archs = " buildozer.spec; then
+          echo "android.archs = arm64-v8a, armeabi-v7a" >> buildozer.spec
         fi
         
         echo "✅ buildozer.spec corrigé"
@@ -92,6 +104,11 @@ jobs:
         mkdir -p android-sdk/cmdline-tools
         mv cmdline-tools android-sdk/cmdline-tools/latest
         
+        # Créer le répertoire tools avec un lien symbolique pour la compatibilité avec buildozer
+        mkdir -p android-sdk/tools/bin
+        ln -s ../../cmdline-tools/latest/bin/sdkmanager android-sdk/tools/bin/sdkmanager
+        ln -s ../../cmdline-tools/latest/bin/avdmanager android-sdk/tools/bin/avdmanager
+        
         # Définir les variables d'environnement
         export ANDROID_HOME=$HOME/.buildozer/android/platform/android-sdk
         export ANDROID_SDK_ROOT=$HOME/.buildozer/android/platform/android-sdk
@@ -103,8 +120,13 @@ jobs:
         
         # Installer les composants SDK nécessaires
         echo "📦 Installation des composants SDK..."
-        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
+        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
         $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-33" "build-tools;33.0.0"
+        
+        # Vérifier que tout est en place
+        echo "✅ Vérification de l'installation..."
+        ls -la $ANDROID_HOME/tools/bin/
+        ls -la $ANDROID_HOME/build-tools/
         
         echo "✅ Android SDK configuré"
         
