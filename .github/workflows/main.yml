@@ -1,24 +1,80 @@
-name: Build Android APK with Docker
+name: Build Android APK
 
 on:
   push:
     branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
       
-    - name: Build APK with Buildozer Docker
-      uses: artem-rizhov/buildozer-action@v1
+    - name: Set up Python
+      uses: actions/setup-python@v4
       with:
-        buildozer-version: stable
-        work-dir: ./
-        command: buildozer android debug
-        artifact-path: bin/*.apk
+        python-version: '3.9'
+        
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          git \
+          zip \
+          unzip \
+          openjdk-11-jdk \
+          autoconf \
+          libtool \
+          pkg-config \
+          zlib1g-dev \
+          libncurses5-dev \
+          libncursesw5-dev \
+          cmake \
+          libffi-dev \
+          libssl-dev \
+          python3-pip \
+          python3-setuptools
+          
+    - name: Install Buildozer
+      run: |
+        python -m pip install --upgrade pip
+        pip install buildozer
+        pip install cython==0.29.33
+        
+    - name: Fix buildozer.spec conflicts
+      run: |
+        echo "🔧 Correction des conflits dans buildozer.spec..."
+        # Supprimer version.regex si version existe
+        if grep -q "^version = " buildozer.spec && grep -q "version.regex" buildozer.spec; then
+          echo "⚠️  Suppression de version.regex (conflit avec version)"
+          sed -i '/version.regex/d' buildozer.spec
+          sed -i '/version.filename/d' buildozer.spec
+        fi
+        
+        # Remplacer android.bootstrap par p4a.bootstrap
+        if grep -q "android.bootstrap" buildozer.spec; then
+          echo "⚠️  Remplacement de android.bootstrap par p4a.bootstrap"
+          sed -i 's/android.bootstrap/p4a.bootstrap/g' buildozer.spec
+        fi
+        
+        echo "✅ buildozer.spec corrigé"
+        
+    - name: Build APK
+      run: |
+        mkdir -p bin
+        buildozer -v android debug 2>&1 | tee build.log
+        
+        if ls bin/*.apk 1> /dev/null 2>&1; then
+          echo "✅ APK créé avec succès"
+          ls -la bin/
+        else
+          echo "❌ Échec de création de l'APK"
+          exit 1
+        fi
         
     - name: Upload APK
       uses: actions/upload-artifact@v4
