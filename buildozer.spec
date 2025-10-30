@@ -22,7 +22,7 @@ version = 1.0.0
 requirements = python3,kivy,openssl,requests,urllib3,pyjnius
 
 # Configuration Android
-android.api = 33
+android.api = 31
 android.minapi = 21
 android.ndk = 25b
 android.sdk = 34
