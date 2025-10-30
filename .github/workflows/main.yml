@@ -1,4 +1,4 @@
-name: Build Android APK - Robust
+name: Build Android APK
 
 on:
   push:
@@ -14,12 +14,6 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       
-    - name: Setup environment
-      run: |
-        echo "📋 Configuration de l'environnement..."
-        mkdir -p bin assets
-        ls -la
-        
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
@@ -27,7 +21,6 @@ jobs:
         
     - name: Install system dependencies
       run: |
-        echo "📦 Installation des dépendances système..."
         sudo apt-get update
         sudo apt-get install -y \
           git \
@@ -48,84 +41,44 @@ jobs:
           
     - name: Install Buildozer
       run: |
-        echo "🛠️ Installation de Buildozer..."
         python -m pip install --upgrade pip
         pip install buildozer
         pip install cython==0.29.33
         
-    - name: Validate buildozer.spec
+    - name: Fix buildozer.spec conflicts
       run: |
-        echo "🔍 Validation du fichier buildozer.spec..."
-        if [ ! -f "buildozer.spec" ]; then
-          echo "❌ buildozer.spec non trouvé"
-          exit 1
+        echo "🔧 Correction des conflits dans buildozer.spec..."
+        # Supprimer version.regex si version existe
+        if grep -q "^version = " buildozer.spec && grep -q "version.regex" buildozer.spec; then
+          echo "⚠️  Suppression de version.regex (conflit avec version)"
+          sed -i '/version.regex/d' buildozer.spec
+          sed -i '/version.filename/d' buildozer.spec
         fi
         
-        # Vérifier les erreurs courantes
-        if grep -q "version.regex" buildozer.spec && grep -q "^version = " buildozer.spec; then
-          echo "❌ Conflict entre version et version.regex détecté"
-          exit 1
-        fi
-        
+        # Remplacer android.bootstrap par p4a.bootstrap
         if grep -q "android.bootstrap" buildozer.spec; then
-          echo "❌ android.bootstrap est déprécié, utilisez p4a.bootstrap"
-          exit 1
+          echo "⚠️  Remplacement de android.bootstrap par p4a.bootstrap"
+          sed -i 's/android.bootstrap/p4a.bootstrap/g' buildozer.spec
         fi
         
-        echo "✅ buildozer.spec semble valide"
+        echo "✅ buildozer.spec corrigé"
         
     - name: Build APK
       run: |
-        echo "🏗️ Démarrage du build Android..."
+        mkdir -p bin
+        buildozer -v android debug 2>&1 | tee build.log
         
-        # Nettoyer les builds précédents
-        rm -rf .buildozer/bin
-        
-        # Build avec logging détaillé
-        {
-          echo "=== DÉBUT DU BUILD ==="
-          date
-          buildozer -v android debug
-          BUILD_EXIT_CODE=$?
-          echo "=== CODE DE SORTIE: $BUILD_EXIT_CODE ==="
-          date
-          echo "=== FIN DU BUILD ==="
-        } 2>&1 | tee full_build.log
-        
-        # Vérifier le résultat
-        if [ $BUILD_EXIT_CODE -eq 0 ] && ls bin/*.apk 1> /dev/null 2>&1; then
-          echo "🎉 BUILD RÉUSSI!"
-          echo "📱 APK créé:"
-          ls -la bin/*.apk
-          APK_SIZE=$(du -h bin/*.apk | cut -f1)
-          echo "📦 Taille de l'APK: $APK_SIZE"
+        if ls bin/*.apk 1> /dev/null 2>&1; then
+          echo "✅ APK créé avec succès"
+          ls -la bin/
         else
-          echo "💥 BUILD ÉCHOUÉ"
-          echo "=== DERNIÈRES LIGNES DU LOG ==="
-          tail -100 full_build.log
+          echo "❌ Échec de création de l'APK"
           exit 1
         fi
         
     - name: Upload APK
-      if: success()
       uses: actions/upload-artifact@v4
       with:
         name: LeTousgestions-APK
         path: bin/*.apk
         retention-days: 30
-        
-    - name: Upload build logs
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: Build-Logs
-        path: |
-          full_build.log
-          .buildozer/android/platform/build-*/build.output
-        retention-days: 7
-        
-    - name: Show success message
-      if: success()
-      run: |
-        echo "🎊 Félicitations! Le build a réussi!"
-        echo "📥 L'APK est disponible dans les artefacts du workflow"
