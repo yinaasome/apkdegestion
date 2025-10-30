@@ -96,10 +96,31 @@ jobs:
       run: |
         echo "🔧 Configuration de l'environnement Android SDK..."
         
-        # Créer les variables d'environnement
+        # Créer le répertoire SDK
+        mkdir -p $HOME/.buildozer/android/platform/android-sdk
+        
+        # Télécharger et installer les outils en ligne de commande Android
+        cd $HOME/.buildozer/android/platform
+        wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O commandlinetools.zip
+        unzip -q commandlinetools.zip
+        mkdir -p android-sdk/cmdline-tools
+        mv cmdline-tools android-sdk/cmdline-tools/latest
+        
+        # Définir les variables d'environnement
+        export ANDROID_HOME=$HOME/.buildozer/android/platform/android-sdk
+        export ANDROID_SDK_ROOT=$HOME/.buildozer/android/platform/android-sdk
+        export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
+        
         echo "ANDROID_HOME=$HOME/.buildozer/android/platform/android-sdk" >> $GITHUB_ENV
         echo "ANDROID_SDK_ROOT=$HOME/.buildozer/android/platform/android-sdk" >> $GITHUB_ENV
-        echo "PATH=$PATH:$HOME/.buildozer/android/platform/android-sdk/tools:$HOME/.buildozer/android/platform/android-sdk/platform-tools" >> $GITHUB_ENV
+        echo "PATH=$PATH:$HOME/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin:$HOME/.buildozer/android/platform/android-sdk/platform-tools" >> $GITHUB_ENV
+        
+        # Installer les composants SDK nécessaires
+        echo "📦 Installation des composants SDK..."
+        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
+        $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-33" "build-tools;33.0.0"
+        
+        echo "✅ Android SDK configuré"
         
     - name: Build APK
       run: |
