@@ -15,22 +15,20 @@ source.dir = .
 # Fichier principal
 source.include_exts = py,png,jpg,kv,atlas,ttf
 
-# Version de l'application
+# Version de l'application (CHOISIR UN SEUL - version OU version.regex)
 version = 1.0.0
 
 # Requirements
 requirements = python3,kivy,openssl,requests,urllib3,pyjnius
-
-# Version de Python
-version.regex = __version__ = ['"](.*)['"]
-version.filename = %(source.dir)s/main.py
 
 # Configuration Android
 android.api = 33
 android.minapi = 21
 android.ndk = 25b
 android.sdk = 34
-android.gradle_download = True
+
+# Configuration p4a (CORRIGÉ: remplacer android.bootstrap)
+p4a.bootstrap = sdl2
 
 # Permissions Android
 android.permissions = INTERNET,ACCESS_NETWORK_STATE,WRITE_EXTERNAL_STORAGE,READ_EXTERNAL_STORAGE
@@ -55,12 +53,6 @@ window.resizeable = 0
 # Log level
 log_level = 2
 
-# Bootstrap
-android.bootstrap = sdl2
-
-# Entrée utilisateur
-android.entrypoint = org.kivy.android.PythonActivity
-
 # Règles d'inclusion/exclusion
 android.add_src = 
 android.add_resources = 
@@ -68,9 +60,6 @@ android.add_resources =
 # Règles de compilation
 android.allow_backup = true
 android.accept_sdk_license = false
-
-# Numéro de version (augmentez à chaque release)
-# android.numeric_version = 1
 
 [buildozer]
 
