@@ -13,6 +13,23 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       
+    - name: Cache Buildozer global directory
+      uses: actions/cache@v3
+      with:
+        path: ~/.buildozer
+        key: buildozer-${{ hashFiles('buildozer.spec') }}
+        restore-keys: |
+          buildozer-
+      
+    - name: Cache Buildozer local directory
+      uses: actions/cache@v3
+      with:
+        path: .buildozer
+        key: buildozer-local-${{ hashFiles('buildozer.spec') }}-${{ hashFiles('**/*.py') }}
+        restore-keys: |
+          buildozer-local-${{ hashFiles('buildozer.spec') }}-
+          buildozer-local-
+      
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
@@ -61,37 +78,35 @@ jobs:
           sed -i 's/android.bootstrap/p4a.bootstrap/g' buildozer.spec
         fi
         
-        # Forcer une version stable des build-tools
+        # Remplacer android.arch par android.archs (nouveau format)
+        if grep -q "android.arch = " buildozer.spec; then
+          echo "⚠️  Remplacement de android.arch par android.archs"
+          sed -i 's/android.arch = /android.archs = /g' buildozer.spec
+        fi
+        
+        # Supprimer android.sdk (deprecated)
+        if grep -q "^android.sdk = " buildozer.spec; then
+          echo "⚠️  Suppression de android.sdk (deprecated)"
+          sed -i '/^android.sdk = /d' buildozer.spec
+        fi
+        
+        # Forcer les versions stables
         if ! grep -q "android.api = " buildozer.spec; then
           echo "android.api = 33" >> buildozer.spec
         fi
         if ! grep -q "android.minapi = " buildozer.spec; then
           echo "android.minapi = 21" >> buildozer.spec
         fi
-        if ! grep -q "android.sdk = " buildozer.spec; then
-          echo "android.sdk = 33" >> buildozer.spec
-        fi
         if ! grep -q "android.ndk = " buildozer.spec; then
           echo "android.ndk = 25b" >> buildozer.spec
+        fi
+        if ! grep -q "android.archs = " buildozer.spec; then
+          echo "android.archs = arm64-v8a, armeabi-v7a" >> buildozer.spec
         fi
         
         echo "✅ buildozer.spec corrigé"
         
-    - name: Accept Android SDK licenses
-      run: |
-        echo "📝 Acceptation automatique des licences Android SDK..."
-        mkdir -p $HOME/.buildozer/android/platform/android-sdk/licenses
-        
-        echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" > $HOME/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
-        echo "d56f5187479451eabf01fb78af6dfcb131a6481e" >> $HOME/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
-        echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" >> $HOME/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
-        
-        echo "84831b9409646a918e30573bab4c9c91346d8abd" > $HOME/.buildozer/android/platform/android-sdk/licenses/android-sdk-preview-license
-        
-        echo "d975f751698a77b662f1254ddbeed3901e976f5a" > $HOME/.buildozer/android/platform/android-sdk/licenses/intel-android-extra-license
-        
-        echo "✅ Licences pré-acceptées"
-        
+
     - name: Setup Android SDK environment
       run: |
         echo "🔧 Configuration de l'environnement Android SDK..."
@@ -106,6 +121,11 @@ jobs:
         mkdir -p android-sdk/cmdline-tools
         mv cmdline-tools android-sdk/cmdline-tools/latest
         
+        # Créer le répertoire tools avec un lien symbolique pour la compatibilité avec buildozer
+        mkdir -p android-sdk/tools/bin
+        ln -s ../../cmdline-tools/latest/bin/sdkmanager android-sdk/tools/bin/sdkmanager
+        ln -s ../../cmdline-tools/latest/bin/avdmanager android-sdk/tools/bin/avdmanager
+        
         # Définir les variables d'environnement
         export ANDROID_HOME=$HOME/.buildozer/android/platform/android-sdk
         export ANDROID_SDK_ROOT=$HOME/.buildozer/android/platform/android-sdk
@@ -117,8 +137,13 @@ jobs:
         
         # Installer les composants SDK nécessaires
         echo "📦 Installation des composants SDK..."
-        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
+        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
         $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-33" "build-tools;33.0.0"
+        
+        # Vérifier que tout est en place
+        echo "✅ Vérification de l'installation..."
+        ls -la $ANDROID_HOME/tools/bin/
+        ls -la $ANDROID_HOME/build-tools/
         
         echo "✅ Android SDK configuré"
         
@@ -131,15 +156,27 @@ jobs:
         export ANDROID_SDK_ROOT=$HOME/.buildozer/android/platform/android-sdk
         
         echo "🏗️  Démarrage de la construction de l'APK..."
-        buildozer -v android debug 2>&1 | tee build.log
+        echo "📝 Mode verbeux désactivé pour réduire la taille des logs"
         
-        if ls bin/*.apk 1> /dev/null 2>&1; then
+        # Build sans mode verbeux pour réduire les logs
+        buildozer android debug 2>&1 | tee build.log | grep -E "(^\[|Error|error|ERROR|Warning|warning|WARNING|✓|✗|Failed|failed|Success|APK)"
+        
+        BUILD_EXIT_CODE=${PIPESTATUS[0]}
+        
+        if [ $BUILD_EXIT_CODE -eq 0 ] && ls bin/*.apk 1> /dev/null 2>&1; then
           echo "✅ APK créé avec succès"
           ls -lh bin/
+          
+          # Renommer l'APK avec la date
+          APK_FILE=$(ls bin/*.apk | head -n 1)
+          NEW_NAME="bin/LeTousgestions-$(date +%Y%m%d-%H%M%S).apk"
+          cp "$APK_FILE" "$NEW_NAME"
+          echo "📦 APK: $NEW_NAME"
         else
-          echo "❌ Échec de création de l'APK"
-          echo "📋 Dernières lignes du log:"
-          tail -50 build.log
+          echo "❌ Échec de création de l'APK (Code: $BUILD_EXIT_CODE)"
+          echo ""
+          echo "📋 Dernières 100 lignes du log complet:"
+          tail -100 build.log
           exit 1
         fi
         
@@ -147,14 +184,22 @@ jobs:
       uses: actions/upload-artifact@v4
       if: success()
       with:
-        name: LeTousgestions-APK
+        name: LeTousgestions-APK-${{ github.sha }}
         path: bin/*.apk
         retention-days: 30
         
-    - name: Upload build log
+    - name: Upload build log (on failure)
       uses: actions/upload-artifact@v4
       if: failure()
       with:
-        name: build-log
+        name: build-log-${{ github.sha }}
         path: build.log
         retention-days: 7
+        
+    - name: Upload full build log (always)
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: full-build-log-${{ github.sha }}
+        path: build.log
+        retention-days: 3
