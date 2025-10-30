@@ -37,48 +37,75 @@ jobs:
           libffi-dev \
           libssl-dev \
           python3-pip \
-          python3-setuptools
-          
+          python3-setuptools \
+          wget
+        
     - name: Install Buildozer
       run: |
         python -m pip install --upgrade pip
         pip install buildozer
         pip install cython==0.29.33
         
-    - name: Fix buildozer.spec conflicts
+    - name: Accept Android licenses
       run: |
-        echo "🔧 Correction des conflits dans buildozer.spec..."
-        # Supprimer version.regex si version existe
-        if grep -q "^version = " buildozer.spec && grep -q "version.regex" buildozer.spec; then
-          echo "⚠️  Suppression de version.regex (conflit avec version)"
-          sed -i '/version.regex/d' buildozer.spec
-          sed -i '/version.filename/d' buildozer.spec
-        fi
+        mkdir -p ~/.android
+        touch ~/.android/repositories.cfg
         
-        # Remplacer android.bootstrap par p4a.bootstrap
-        if grep -q "android.bootstrap" buildozer.spec; then
-          echo "⚠️  Remplacement de android.bootstrap par p4a.bootstrap"
-          sed -i 's/android.bootstrap/p4a.bootstrap/g' buildozer.spec
-        fi
+        # Accepter les licences Android SDK
+        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
         
-        echo "✅ buildozer.spec corrigé"
+        # Télécharger et configurer sdkmanager manuellement si nécessaire
+        wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O cmdline-tools.zip
+        mkdir -p ~/.android/cmdline-tools
+        unzip -q cmdline-tools.zip -d ~/.android/cmdline-tools/
+        mv ~/.android/cmdline-tools/cmdline-tools ~/.android/cmdline-tools/latest
         
-    - name: Build APK
+        export ANDROID_HOME=~/.android
+        export PATH=$ANDROID_HOME/cmdline-tools/latest/bin:$PATH
+        
+        # Accepter toutes les licences
+        yes | sdkmanager --licenses
+        
+    - name: Build APK with Buildozer
       run: |
         mkdir -p bin
-        buildozer -v android debug 2>&1 | tee build.log
         
+        # Nettoyer le cache buildozer
+        rm -rf .buildozer
+        
+        # Configurer les variables d'environnement pour Android SDK
+        export ANDROID_HOME=$HOME/.buildozer/android/platform/android-sdk
+        export ANDROID_SDK_HOME=$ANDROID_HOME
+        export PATH=$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH
+        
+        # Build avec timeout et gestion d'erreur
+        timeout 1800 buildozer -v android debug 2>&1 | tee build.log || true
+        
+        # Vérifier si l'APK a été créé
         if ls bin/*.apk 1> /dev/null 2>&1; then
           echo "✅ APK créé avec succès"
           ls -la bin/
+          APK_FILE=$(ls bin/*.apk)
+          echo "APK_PATH=$APK_FILE" >> $GITHUB_ENV
         else
           echo "❌ Échec de création de l'APK"
+          echo "=== Dernières 100 lignes du log ==="
+          tail -100 build.log
           exit 1
         fi
         
     - name: Upload APK
+      if: success()
       uses: actions/upload-artifact@v4
       with:
         name: LeTousgestions-APK
         path: bin/*.apk
         retention-days: 30
+        
+    - name: Upload build log
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: Build-Logs
+        path: build.log
+        retention-days: 7
